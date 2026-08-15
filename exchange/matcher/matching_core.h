@@ -5,14 +5,14 @@
 #include <vector>
 #include <memory>
 
-#include "common/macros.h"
-#include "common/thread_utils.h"
-#include "common/logging.h"
+#include "Common/macros.h"
+#include "Common/threads.h"
+#include "Common/logging.h"
 
-#include "exchange/order_gateway/order_request.h"
-#include "exchange/order_gateway/order_response.h"
+#include "exchange/order_server/order_request.h"
+#include "exchange/order_server/order_response.h"
 #include "exchange/market_data/market_update.h"
-#include "exchange/matcher/order_book.h"
+#include order_book.h"
 
 namespace Exchange {
   /// Owns one SymbolOrderBook per tradeable symbol and runs the single matching thread

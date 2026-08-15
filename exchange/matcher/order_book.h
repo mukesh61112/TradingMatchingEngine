@@ -4,13 +4,13 @@
 #include <unordered_map>
 #include <functional>
 
-#include "common/types.h"
-#include "common/mem_pool.h"
-#include "common/logging.h"
+#include "Common/types.h"
+#include "Common/memory_pool.h"
+#include "Common/logging.h"
 
-#include "exchange/order_gateway/order_response.h"
-#include "exchange/market_data/market_update.h"
-#include "exchange/matcher/book_order.h"
+#include "exchange/order_server/order_response.h"
+#include "exchange/ma/market_update.h"
+#include "book_order.h"
 
 namespace Exchange {
   class MatchingCore; // forward declared - the order book publishes responses/updates through it.

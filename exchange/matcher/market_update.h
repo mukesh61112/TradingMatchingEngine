@@ -2,8 +2,8 @@
 
 #include <sstream>
 
-#include "common/types.h"
-#include "common/lf_queue.h"
+#include "Common/types.h"
+#include "Common/lock_free_queue.h"
 
 namespace Exchange {
   /// Kind of book-changing event being broadcast.

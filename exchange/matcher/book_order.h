@@ -1,8 +1,7 @@
 #pragma once
 
 #include <sstream>
-
-#include "common/types.h"
+#include "Common/types.h"
 
 namespace Exchange {
   /// A single resting order inside one symbol's order book. Doubles as a node in the
