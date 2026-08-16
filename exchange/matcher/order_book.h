@@ -9,7 +9,7 @@
 #include "Common/logging.h"
 
 #include "exchange/order_server/order_response.h"
-#include "exchange/ma/market_update.h"
+#include "market_update.h"
 #include "book_order.h"
 
 namespace Exchange {

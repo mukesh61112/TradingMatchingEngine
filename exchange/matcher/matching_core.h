@@ -11,8 +11,8 @@
 
 #include "exchange/order_server/order_request.h"
 #include "exchange/order_server/order_response.h"
-#include "exchange/market_data/market_update.h"
-#include order_book.h"
+#include "exchange/matcher/market_update.h"
+#include "order_book.h"
 
 namespace Exchange {
   /// Owns one SymbolOrderBook per tradeable symbol and runs the single matching thread

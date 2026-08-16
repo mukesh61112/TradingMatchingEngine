@@ -1,0 +1,6 @@
+[ 11%] Building CXX object CMakeFiles/exchange_main.dir/exchange/exchange_main.cpp.o
+[ 22%] Building CXX object CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o
+[ 33%] Building CXX object CMakeFiles/test_order_book.dir/tests/test_order_book.cpp.o
+[ 44%] Building CXX object CMakeFiles/benchmark_main.dir/exchange/matcher/order_book.cpp.o
+[ 55%] Building CXX object CMakeFiles/test_order_book.dir/exchange/matcher/order_book.cpp.o
+[ 66%] Building CXX object CMakeFiles/benchmark_main.dir/benchmarks/benchmark_main.cpp.o
