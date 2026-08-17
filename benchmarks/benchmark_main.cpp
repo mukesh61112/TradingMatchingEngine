@@ -59,7 +59,13 @@ int main(int argc, char **argv) {
     }
   });
 
-  std::cout << "submitting " << num_orders << " orders...\n";
+
+
+
+
+
+
+  std::cout << "submiting " << num_orders << " orders...\n";
   const auto start = std::chrono::steady_clock::now();
 
   for (size_t i = 1; i <= num_orders; ++i) {
@@ -75,6 +81,13 @@ int main(int argc, char **argv) {
     submitted_at[i] = getCurrentNanos();
     gateway.submit(req);
   }
+
+
+
+
+
+
+
 
   // wait for responses to catch up, bail out after a few idle seconds either way
   auto last_progress = std::chrono::steady_clock::now();

@@ -92,8 +92,11 @@ namespace Exchange {
                         Common::Price limit_price, bool has_limit_price, Common::Qty &leaves_qty) noexcept -> void;
 
     /// Insert a new resting order at the back (newest / lowest priority) of its price level.
-    auto restOrder(Common::ClientId client_id, Common::OrderId order_id, Common::Side side,
-                    Common::Price price, Common::Qty qty, Common::Nanos priority_ts) noexcept -> void;
+    /// original_qty is the size the order was (re)submitted at - kept alongside qty (the
+    /// live remaining amount) so both survive on the resting order, not just one of them.
+    auto restOrder(Common::ClientId client_id, Common::OrderId order_id, Common::OrderType order_type,
+                    Common::Side side, Common::Price price, Common::Qty original_qty, Common::Qty qty,
+                    Common::Nanos priority_ts) noexcept -> void;
 
     /// Unlink and fully remove a resting order from the book (used by cancel, full fills,
     /// and modify-driven re-insertion). Cleans up an emptied price level automatically.

@@ -97,9 +97,12 @@ CMakeFiles/exchange_main.dir/exchange/exchange_main.cpp.o: /workspaces/TradingMa
   /usr/include/c++/13/bits/stl_iterator.h \
   /usr/include/c++/13/bits/stl_iterator_base_funcs.h \
   /usr/include/c++/13/bits/stl_iterator_base_types.h \
+  /usr/include/c++/13/bits/stl_map.h \
+  /usr/include/c++/13/bits/stl_multimap.h \
   /usr/include/c++/13/bits/stl_pair.h \
   /usr/include/c++/13/bits/stl_raw_storage_iter.h \
   /usr/include/c++/13/bits/stl_tempbuf.h \
+  /usr/include/c++/13/bits/stl_tree.h \
   /usr/include/c++/13/bits/stl_uninitialized.h \
   /usr/include/c++/13/bits/stl_vector.h \
   /usr/include/c++/13/bits/streambuf.tcc \
@@ -152,6 +155,7 @@ CMakeFiles/exchange_main.dir/exchange/exchange_main.cpp.o: /workspaces/TradingMa
   /usr/include/c++/13/istream \
   /usr/include/c++/13/limits \
   /usr/include/c++/13/locale \
+  /usr/include/c++/13/map \
   /usr/include/c++/13/memory \
   /usr/include/c++/13/mutex \
   /usr/include/c++/13/new \
@@ -325,11 +329,13 @@ CMakeFiles/exchange_main.dir/exchange/exchange_main.cpp.o: /workspaces/TradingMa
   /workspaces/TradingMatchingEngine/Common/lock_free_queue.h \
   /workspaces/TradingMatchingEngine/Common/logging.h \
   /workspaces/TradingMatchingEngine/Common/macros.h \
+  /workspaces/TradingMatchingEngine/Common/memory_pool.h \
   /workspaces/TradingMatchingEngine/Common/threads.h \
   /workspaces/TradingMatchingEngine/Common/time.h \
   /workspaces/TradingMatchingEngine/Common/types.h \
   /workspaces/TradingMatchingEngine/exchange/market_data/book_snapshot_service.h \
   /workspaces/TradingMatchingEngine/exchange/market_data/market_data_feed.h \
+  /workspaces/TradingMatchingEngine/exchange/matcher/book_order.h \
   /workspaces/TradingMatchingEngine/exchange/matcher/market_update.h \
   /workspaces/TradingMatchingEngine/exchange/matcher/matching_core.h \
   /workspaces/TradingMatchingEngine/exchange/matcher/order_book.h \
@@ -420,6 +426,7 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
   /usr/include/c++/13/bits/shared_ptr_base.h \
   /usr/include/c++/13/bits/sstream.tcc \
   /usr/include/c++/13/bits/std_abs.h \
+  /usr/include/c++/13/bits/std_function.h \
   /usr/include/c++/13/bits/std_mutex.h \
   /usr/include/c++/13/bits/std_thread.h \
   /usr/include/c++/13/bits/stl_algo.h \
@@ -431,9 +438,12 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
   /usr/include/c++/13/bits/stl_iterator.h \
   /usr/include/c++/13/bits/stl_iterator_base_funcs.h \
   /usr/include/c++/13/bits/stl_iterator_base_types.h \
+  /usr/include/c++/13/bits/stl_map.h \
+  /usr/include/c++/13/bits/stl_multimap.h \
   /usr/include/c++/13/bits/stl_pair.h \
   /usr/include/c++/13/bits/stl_raw_storage_iter.h \
   /usr/include/c++/13/bits/stl_tempbuf.h \
+  /usr/include/c++/13/bits/stl_tree.h \
   /usr/include/c++/13/bits/stl_uninitialized.h \
   /usr/include/c++/13/bits/stl_vector.h \
   /usr/include/c++/13/bits/streambuf.tcc \
@@ -476,6 +486,7 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
   /usr/include/c++/13/ext/type_traits.h \
   /usr/include/c++/13/format \
   /usr/include/c++/13/fstream \
+  /usr/include/c++/13/functional \
   /usr/include/c++/13/initializer_list \
   /usr/include/c++/13/iomanip \
   /usr/include/c++/13/ios \
@@ -484,6 +495,7 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
   /usr/include/c++/13/istream \
   /usr/include/c++/13/limits \
   /usr/include/c++/13/locale \
+  /usr/include/c++/13/map \
   /usr/include/c++/13/memory \
   /usr/include/c++/13/new \
   /usr/include/c++/13/numbers \
@@ -655,9 +667,11 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
   /workspaces/TradingMatchingEngine/Common/lock_free_queue.h \
   /workspaces/TradingMatchingEngine/Common/logging.h \
   /workspaces/TradingMatchingEngine/Common/macros.h \
+  /workspaces/TradingMatchingEngine/Common/memory_pool.h \
   /workspaces/TradingMatchingEngine/Common/threads.h \
   /workspaces/TradingMatchingEngine/Common/time.h \
   /workspaces/TradingMatchingEngine/Common/types.h \
+  /workspaces/TradingMatchingEngine/exchange/matcher/book_order.h \
   /workspaces/TradingMatchingEngine/exchange/matcher/market_update.h \
   /workspaces/TradingMatchingEngine/exchange/matcher/matching_core.h \
   /workspaces/TradingMatchingEngine/exchange/matcher/order_book.h \
@@ -671,9 +685,13 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 
 /workspaces/TradingMatchingEngine/exchange/matcher/market_update.h:
 
+/workspaces/TradingMatchingEngine/exchange/matcher/book_order.h:
+
 /workspaces/TradingMatchingEngine/exchange/market_data/market_data_feed.h:
 
 /workspaces/TradingMatchingEngine/exchange/market_data/book_snapshot_service.h:
+
+/workspaces/TradingMatchingEngine/Common/memory_pool.h:
 
 /workspaces/TradingMatchingEngine/Common/macros.h:
 
@@ -763,17 +781,15 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 
 /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
-
 /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
 
-/usr/include/c++/13/cstdio:
+/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/__sigset_t.h:
+/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
 
-/usr/include/c++/13/bits/charconv.h:
+/usr/include/x86_64-linux-gnu/bits/types.h:
 
 /usr/include/c++/13/concepts:
 
@@ -801,8 +817,6 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 
 /usr/include/c++/13/bits/atomic_base.h:
 
-/usr/include/c++/13/cstring:
-
 /usr/include/x86_64-linux-gnu/bits/types/mbstate_t.h:
 
 /usr/include/c++/13/bits/unique_ptr.h:
@@ -818,6 +832,8 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 /usr/include/c++/13/bits/new_allocator.h:
 
 /usr/include/c++/13/bits/stl_uninitialized.h:
+
+/usr/include/c++/13/bits/stl_map.h:
 
 /usr/include/c++/13/locale:
 
@@ -907,6 +923,10 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 
 /usr/include/c++/13/bits/exception_ptr.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
+
+/usr/include/c++/13/bits/stl_multimap.h:
+
 /usr/include/x86_64-linux-gnu/c++/13/bits/ctype_inline.h:
 
 /usr/include/c++/13/bits/std_function.h:
@@ -964,8 +984,6 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 /usr/include/c++/13/bits/stl_vector.h:
 
 /usr/include/c++/13/bits/stl_tempbuf.h:
-
-/usr/include/c++/13/bits/codecvt.h:
 
 /usr/include/c++/13/charconv:
 
@@ -1029,7 +1047,17 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 
 /usr/include/c++/13/mutex:
 
+/usr/include/x86_64-linux-gnu/bits/types/__sigset_t.h:
+
+/usr/include/c++/13/bits/charconv.h:
+
+/usr/include/c++/13/cstdio:
+
 /usr/include/c++/13/backward/auto_ptr.h:
+
+/usr/include/c++/13/bits/codecvt.h:
+
+/usr/include/c++/13/bits/stl_tree.h:
 
 /usr/include/c++/13/bits/stringfwd.h:
 
@@ -1048,8 +1076,6 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 /usr/include/c++/13/ostream:
 
 /usr/include/c++/13/bits/cpp_type_traits.h:
-
-/usr/include/x86_64-linux-gnu/bits/types.h:
 
 /usr/include/c++/13/bits/move.h:
 
@@ -1100,6 +1126,8 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 /usr/include/x86_64-linux-gnu/bits/environments.h:
 
 /usr/include/c++/13/bits/memoryfwd.h:
+
+/usr/include/c++/13/cstring:
 
 /usr/include/c++/13/ctime:
 
@@ -1196,6 +1224,8 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 /usr/include/x86_64-linux-gnu/bits/stdint-intn.h:
 
 /usr/include/c++/13/string:
+
+/usr/include/c++/13/map:
 
 /usr/include/c++/13/string_view:
 
@@ -1313,7 +1343,9 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 
 /usr/include/x86_64-linux-gnu/bits/stdio2.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
+/usr/include/x86_64-linux-gnu/bits/timex.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdio_lim.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/struct___jmp_buf_tag.h:
 
@@ -1332,9 +1364,3 @@ CMakeFiles/exchange_main.dir/exchange/matcher/order_book.cpp.o: /workspaces/Trad
 /usr/include/c++/13/bits/locale_classes.h:
 
 /usr/include/x86_64-linux-gnu/bits/timesize.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdio_lim.h:
-
-/usr/include/x86_64-linux-gnu/bits/timex.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:

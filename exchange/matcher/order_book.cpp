@@ -33,9 +33,10 @@ namespace Exchange {
   // Book maintenance: insert / remove resting orders and their price levels.
   // ------------------------------------------------------------------------
 
-  auto SymbolOrderBook::restOrder(Common::ClientId client_id, Common::OrderId order_id, Common::Side side,
-                                   Common::Price price, Common::Qty qty, Common::Nanos priority_ts) noexcept -> void {
-    auto *order = order_pool_.allocate(order_id, client_id, side, price, qty, priority_ts);
+  auto SymbolOrderBook::restOrder(Common::ClientId client_id, Common::OrderId order_id, Common::OrderType order_type,
+                                   Common::Side side, Common::Price price, Common::Qty original_qty, Common::Qty qty,
+                                   Common::Nanos priority_ts) noexcept -> void {
+    auto *order = order_pool_.allocate(order_id, client_id, symbol_, order_type, side, price, original_qty, qty, priority_ts);
     PriceLevel *level = nullptr;
 
     if (side == Common::Side::BUY) {
@@ -132,7 +133,13 @@ namespace Exchange {
             sendBookUpdate(MarketUpdateType::TRADE, node->order_id_, node->side_, level_price, fill_qty);
 
             if (node->qty_ == 0) {
-              removeOrder(node); // fully filled resting order leaves the book.
+              // Fully filled - leaves the book. Emit an explicit removal event (not
+              // just the TRADE above) so downstream consumers like the snapshot
+              // mirror actually drop it instead of holding a phantom zero-qty entry.
+              const auto removed_id = node->order_id_;
+              const auto removed_side = node->side_;
+              removeOrder(node);
+              sendBookUpdate(MarketUpdateType::CANCEL, removed_id, removed_side, level_price, 0);
             } else {
               sendBookUpdate(MarketUpdateType::MODIFY, node->order_id_, node->side_, level_price, node->qty_);
             }
@@ -161,7 +168,10 @@ namespace Exchange {
             sendBookUpdate(MarketUpdateType::TRADE, node->order_id_, node->side_, level_price, fill_qty);
 
             if (node->qty_ == 0) {
+              const auto removed_id = node->order_id_;
+              const auto removed_side = node->side_;
               removeOrder(node);
+              sendBookUpdate(MarketUpdateType::CANCEL, removed_id, removed_side, level_price, 0);
             } else {
               sendBookUpdate(MarketUpdateType::MODIFY, node->order_id_, node->side_, level_price, node->qty_);
             }
@@ -190,7 +200,7 @@ namespace Exchange {
     matchIncoming(client_id, order_id, side, price, /*has_limit_price=*/true, leaves);
 
     if (leaves > 0) {
-      restOrder(client_id, order_id, side, price, leaves, Common::getCurrentNanos());
+      restOrder(client_id, order_id, Common::OrderType::LIMIT, side, price, qty, leaves, Common::getCurrentNanos());
       sendBookUpdate(MarketUpdateType::ADD, order_id, side, price, leaves);
     }
   }
@@ -265,6 +275,7 @@ namespace Exchange {
 
     auto *order = it->second;
     const auto side = order->side_;
+    const auto order_type = order->order_type_;
     const auto old_price = order->price_;
     const auto old_qty = order->qty_;
 
@@ -277,19 +288,20 @@ namespace Exchange {
       auto leaves = new_qty;
       matchIncoming(client_id, order_id, side, new_price, /*has_limit_price=*/true, leaves);
       if (leaves > 0) {
-        restOrder(client_id, order_id, side, new_price, leaves, Common::getCurrentNanos());
+        restOrder(client_id, order_id, order_type, side, new_price, new_qty, leaves, Common::getCurrentNanos());
         sendBookUpdate(MarketUpdateType::ADD, order_id, side, new_price, leaves);
       }
     } else if (new_qty < old_qty) {
       // Quantity decrease at the same price retains time priority - update in place.
       order->qty_ = new_qty;
+      order->original_qty_ = new_qty;
       sendResponse({ResponseStatus::MODIFIED, client_id, symbol_, order_id, order_id, side, old_price, 0, new_qty});
       sendBookUpdate(MarketUpdateType::MODIFY, order_id, side, old_price, new_qty);
     } else if (new_qty > old_qty) {
       // Quantity increase resets time priority - remove and re-insert at the back of
       // this price level's FIFO queue.
       removeOrder(order);
-      restOrder(client_id, order_id, side, old_price, new_qty, Common::getCurrentNanos());
+      restOrder(client_id, order_id, order_type, side, old_price, new_qty, new_qty, Common::getCurrentNanos());
       sendResponse({ResponseStatus::MODIFIED, client_id, symbol_, order_id, order_id, side, old_price, 0, new_qty});
       sendBookUpdate(MarketUpdateType::MODIFY, order_id, side, old_price, new_qty);
     } else {
