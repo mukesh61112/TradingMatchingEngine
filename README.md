@@ -1,361 +1,224 @@
-# TradingMatchingEngine
-# High-Performance Multi-Symbol Electronic Order Matching Engine
+# Trading Matching Engine
 
-A production-style, low-latency order matching engine written in C++20, implementing
-price-time priority matching across multiple independent symbol order books, with a
-lock-free, multi-threaded pipeline modeled on real exchange architectures (order gateway
-→ matching core → market data publisher).
+A multi-symbol order matching engine written in C++20. It works like a simplified stock
+exchange - clients send orders, the engine matches buyers with sellers using price-time
+priority, and it publishes trades and book updates as they happen.
 
----
+This was built as a technical assignment, so the goal was to keep the core matching logic
+correct and fast, while keeping the rest of the system (networking, persistence, etc.)
+simple and out of scope.
 
-## Table of Contents
+## How it works
 
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Repository Structure](#repository-structure)
-4. [Data Structures](#data-structures)
-5. [Matching Logic](#matching-logic)
-6. [Threading Model](#threading-model)
-7. [Time & Space Complexity](#time--space-complexity)
-8. [Error Handling](#error-handling)
-9. [Design Decisions & Trade-offs](#design-decisions--trade-offs)
-10. [Build Instructions](#build-instructions)
-11. [Running Tests](#running-tests)
-12. [Running Benchmarks](#running-benchmarks)
-13. [Sample Input / Output](#sample-input--output)
-14. [Future Improvements](#future-improvements)
-
----
-
-## Overview
-
-This engine supports:
-
-- **Multi-symbol order books** — each symbol has a fully independent book.
-- **Order types** — Limit, Market, IOC (Immediate-or-Cancel), Cancel, Modify.
-- **Price-Time priority matching** with correct partial/multiple/complete fill semantics.
-- **Self-trade prevention**.
-- **Market data publishing** on every book-changing event.
-- **Full book snapshots** with snapshot-based recovery.
-- **Execution / event logging**.
-- **Deterministic, single-writer-per-symbol matching** under a multi-producer,
-  multi-threaded pipeline.
-
-The design intentionally mirrors real exchange topology: independent stages connected by
-lock-free single-producer/single-consumer (SPSC) queues, so that no stage ever blocks on
-another and the hot path (order → match → publish) does no locking and minimal/no heap
-allocation.
-
----
-
-## Architecture
+There are three main pieces, and they talk to each other only through queues - no shared
+state, no locks on the hot path.
 
 ```
-        Producer Threads (order sources / clients)
-                       │
-                       ▼
-        ┌───────────────────────────┐
-        │   ORDER GATEWAY SERVER     │   (order_server/)
-        │   - validates request      │
-        │   - FIFO-sequences orders  │
-        │     from multiple clients  │
-        │     into one deterministic │
-        │     timestamped stream     │
-        └─────────────┬──────────────┘
-                       │  lock-free queue (ClientRequest)
-                       ▼
-        ┌───────────────────────────┐
-        │   MATCHING ENGINE          │   (matcher/)
-        │   - one thread per symbol  │
-        │   - owns that symbol's     │
-        │     order book exclusively │
-        │   - price-time priority    │
-        │     matching                │
-        │   - self-trade prevention  │
-        └───────┬──────────┬─────────┘
-                │          │
-     lock-free  │          │  lock-free queue
-     queue      ▼          ▼  (MarketUpdate)
-   (ClientResponse)  ┌───────────────────────────┐
-                │     │   MARKET DATA PUBLISHER    │  (market_data/)
-                ▼     │   - broadcasts book deltas │
-        back to        │   - snapshot_synthesizer:  │
-        Order Gateway   │     rebuilds full snapshot │
-        → client        │     for recovery/late join │
-                        └───────────────────────────┘
+client threads
+      |
+      v
+Order Gateway  --------->  Matching Engine  --------->  Market Data Feed
+(order_server)             (matcher)                    (market_data)
 ```
 
-Each arrow is a **lock-free SPSC ring buffer** (`Common/lf_queue.h`). The three stages
-(gateway, matcher, publisher) never share mutable state directly — only via these queues —
-which removes the need for locks on the hot path and keeps matching deterministic.
+**Order Gateway** takes orders from however many threads want to submit them, timestamps
+each one the moment it arrives, and sorts them by receive time before handing them off.
+This is what keeps things deterministic even though multiple threads can be submitting
+at once.
 
-### Why one matching thread per symbol?
+**Matching Engine** owns one order book per symbol, and each symbol gets its own thread,
+its own inbound request queue, and its own outbound response/update queues. The gateway
+splits its time-sorted stream out by symbol (`MatchingCore::routeRequest`), so each
+symbol's thread only ever sees requests for that symbol, in the order they were
+received. No two symbols ever touch each other's book or share a thread.
 
-Matching for a given symbol must be strictly serialized to preserve price-time priority
-and determinism. Running one matching thread per symbol means:
+**Market Data Feed** listens to every symbol's book-update queue (a new order resting, a
+trade, a cancel, etc.) and pushes that out to anyone subscribed. It also keeps a
+mirrored copy of the book on the side so it can hand out full snapshots without
+bothering the matching threads.
 
-- No locking is required *within* a symbol's book (single writer).
-- Symbols scale independently and in parallel across cores.
-- A slow/busy symbol cannot stall matching for other symbols.
+Every queue in the system is a lock-free single-producer/single-consumer ring buffer
+(`Common/lock_free_queue.h`). Because each symbol has its own dedicated request queue
+(written only by the gateway) and its own dedicated response/update queues (written only
+by that symbol's own thread), every queue genuinely has exactly one writer - no locks or
+CAS retry loops needed, just plain atomic read/write indices.
 
----
-
-## Repository Structure
-
-```
-Engine/
-├── Common/                        # symbol-agnostic shared infrastructure
-│   ├── types.h                    # OrderId, ClientId, Price, Qty, Side, Symbol, Nanos
-│   ├── lf_queue.h                 # templated lock-free SPSC ring buffer
-│   ├── mem_pool.h                 # fixed-size object pool (no runtime heap alloc)
-│   ├── macros.h                   # branch hints, cache-line alignment, no-copy macros
-│   ├── time_utils.h               # nanosecond timestamps
-│   ├── thread_utils.h             # thread creation + CPU core affinity pinning
-│   ├── logging.h / Log.cpp        # async, non-blocking logger
-│   └── socket_utils.h, tcp_*.h/.cpp, mcast_socket.*   # optional network I/O layer
-│
-├── exchange/
-│   ├── order_server/
-│   │   ├── client_request.h       # inbound order request schema
-│   │   ├── client_response.h      # ack / reject / fill / cancel-confirm schema
-│   │   ├── fifo_sequencer.h       # deterministic multi-producer merge
-│   │   └── order_server.cpp/h     # gateway thread, request validation
-│   │
-│   ├── matcher/
-│   │   ├── me_order.h/.cpp        # order node (intrusive linked-list entry)
-│   │   ├── me_order_book.h/.cpp   # per-symbol book: bids/asks price levels
-│   │   └── matching_engine.cpp/h  # per-symbol matching thread + dispatch logic
-│   │
-│   └── market_data/
-│       ├── market_update.h        # outbound delta schema (Add/Modify/Cancel/Trade/Clear)
-│       ├── market_data_publisher.cpp/h
-│       └── snapshot_synthesizer.cpp/h   # full-book snapshot + recovery
-│
-├── exchange_main.cpp               # wiring: queues, threads, affinity, lifecycle
-│
-├── tests/
-│   ├── test_order_book.cpp         # matching, partial/complete fills, priority
-│   ├── test_order_types.cpp        # market/IOC/modify semantics
-│   ├── test_self_trade.cpp
-│   └── test_error_handling.cpp     # dup IDs, bad symbol/price/qty, unknown orders
-│
-├── benchmarks/
-│   └── benchmark_main.cpp          # throughput + latency percentiles
-│
-├── sample_io/
-│   ├── sample_orders.txt
-│   └── sample_output.txt
-│
-├── CMakeLists.txt
-└── README.md
-```
-
----
-
-## Data Structures
-
-### Order Book (`me_order_book.h`)
-
-Each symbol owns one `OrderBook` instance containing two sides:
-
-| Side | Container | Ordering |
-|---|---|---|
-| Bids | `std::map<Price, PriceLevel, std::greater<Price>>` | highest price first |
-| Asks | `std::map<Price, PriceLevel, std::less<Price>>` | lowest price first |
-
-Each `PriceLevel` holds an **intrusive doubly-linked list** of `MEOrder` nodes in
-time-priority (FIFO) order at that price. This gives:
-
-- O(log P) to find/insert/remove a price level (P = number of distinct price levels
-  currently active — typically small relative to order count).
-- O(1) to append a new order to the back of a level's list (new resting order).
-- O(1) to remove any specific order from a level's list (cancel/modify/fill), because
-  each `MEOrder` stores direct `prev`/`next` pointers — no linear scan required.
-
-A side auxiliary `unordered_map<OrderId, MEOrder*>` gives **O(1) average** lookup from
-order ID to its node for Cancel/Modify operations.
-
-### Order Node (`me_order.h`)
+## Project layout
 
 ```
-struct MEOrder {
-    OrderId    order_id;
-    ClientId   client_id;
-    Symbol     symbol;
-    Side       side;
-    OrderType  type;
-    Price      price;
-    Qty        qty;
-    Qty        remaining_qty;
-    Nanos      priority_ts;   // used for time priority, reset on modify per rules below
-    MEOrder*   prev;
-    MEOrder*   next;
-};
+Common/
+  types.h              basic types - OrderId, Price, Qty, Side, Symbol, Nanos, etc.
+  lock_free_queue.h     the SPSC ring buffer used between every stage
+  memory_pool.h         fixed-size pool allocator, so the book doesn't call new/delete
+  threads.h             thread creation + pinning to a CPU core
+  time.h                nanosecond timestamps
+  logging.h             a simple async logger
+  macros.h              branch-hint / assert helpers
+
+exchange/
+  order_server/
+    order_request.h       what an incoming order looks like
+    order_response.h      accept / reject / fill / cancel responses
+    request_sequencer.h    sorts requests by receive time, then routes each one onward
+    order_server.h          the gateway itself - ties the above together
+
+  matcher/
+    book_order.h           one resting order (also a node in its price level's list)
+    matching_core.h         owns every symbol's book, queues, and matching thread
+    order_book.h/.cpp       the actual per-symbol order book and matching logic
+    market_update.h         book-update event schema (new order, trade, cancel...)
+
+  market_data/
+    market_data_feed.h      fans out book updates to subscribers
+    book_snapshot_service.h keeps a full mirrored book for snapshot/recovery
+
+  exchange_main.cpp     wires everything together, reads a CSV of orders, runs it
+
+tests/
+  test_order_book.cpp   unit tests for matching, fills, priority, edge cases
+
+benchmarks/
+  benchmark_main.cpp    throughput + latency numbers
+
+sample_io/
+  sample_orders.txt     example input
+  sample_output.txt     what the engine produces for it
 ```
 
-### Memory Pooling
+## Order book data structure
 
-`MEOrder` and `PriceLevel` objects are allocated from `Common/mem_pool.h` — a fixed-size
-free-list pool sized at startup — instead of `new`/`delete`, eliminating heap allocation
-from the matching hot path.
+Each symbol gets its own `SymbolOrderBook`. Bids and asks are each stored in a
+`std::map<Price, PriceLevel*>` - bids sorted highest price first, asks sorted lowest
+price first, so the best price on either side is always at `.begin()`.
 
----
+Every price level holds a doubly-linked list of orders in the order they arrived (FIFO),
+so the earliest order at a price level always gets matched first. Cancelling or filling
+an order just unlinks its node directly - no scanning through the list.
 
-## Matching Logic
+There's also a plain `unordered_map<OrderId, BookOrder*>` so cancel/modify can find the
+right order straight away instead of searching through price levels.
 
-### Price-Time Priority
+Orders and price levels come out of a fixed-size memory pool (`Common/memory_pool.h`)
+instead of `new`/`delete`, so the matching path doesn't allocate on the heap.
 
-- **Buy orders**: higher price has priority; ties broken by earlier timestamp.
-- **Sell orders**: lower price has priority; ties broken by earlier timestamp.
-- **Trade price** is always the resting (maker) order's price.
+Rough complexity:
 
-### Order Type Behavior
-
-| Type | Behavior |
+| operation | cost |
 |---|---|
-| **Limit** | Matches immediately against the opposite book while possible; unfilled remainder rests on the book. |
-| **Market** | Consumes best available liquidity across price levels; any unfilled remainder is cancelled (never rests). |
-| **IOC** | Matches immediately like a limit order at its price; any unfilled remainder is cancelled (never rests). |
-| **Cancel** | Removes an active resting order in O(1) via its stored `prev`/`next` pointers. Cancelling an already-filled/absent order is ignored gracefully (no error). |
-| **Modify** | Change price and/or quantity of a resting order: <br>• **Price change** → order re-inserted at new price level, timestamp reset (loses priority). <br>• **Quantity decrease** → priority/timestamp retained (stays in place in the list). <br>• **Quantity increase** → timestamp reset (moves to back of time priority), even at the same price. |
+| new limit order, no match | O(log P) - P = number of price levels on that side |
+| order matches and fills | O(1) per order matched, plus O(log P) if a price level empties out |
+| cancel | O(1) - direct lookup + unlink |
+| modify, qty decrease | O(1), keeps its place in line |
+| modify, qty increase or price change | O(log P) - loses priority, gets re-inserted |
+| market / IOC order | O(k) roughly, k = number of levels it has to sweep through |
 
-### Self-Trade Prevention
+Space is O(N) resting orders + O(P) price levels per symbol, on top of the pool capacity
+reserved up front.
 
-Before executing a match, the engine checks whether the incoming order's `client_id`
-equals the resting order's `client_id` at that price level. If so, the match is skipped
-per the configured self-trade policy (default: cancel/skip the resting order's fill
-against that specific counterparty and continue matching against the next eligible
-order), and the event is logged.
+## Order types
 
----
+- **Limit** - matches whatever it can right away, remainder rests on the book.
+- **Market** - eats through the book at whatever price is available, cancels anything
+  left unfilled instead of resting it.
+- **IOC** - same as limit but never rests - unfilled part is cancelled immediately.
+- **Cancel** - removes a resting order. Cancelling something that's already gone (filled
+  or already cancelled) is just ignored, not treated as an error.
+- **Modify** - can change price and/or quantity on a resting order:
+  - changing price resets its place in line (new price level, new timestamp)
+  - decreasing quantity keeps its place in line
+  - increasing quantity resets its place in line, even at the same price
 
-## Threading Model
+## Self-trade prevention
 
-| Thread | Count | Responsibility |
-|---|---|---|
-| Producer / client threads | N (multiple) | Submit `ClientRequest`s |
-| Order Gateway Server | 1 | Validates + FIFO-sequences requests from all producers into one deterministic, timestamp-ordered stream |
-| Matching Engine | 1 per symbol | Owns and mutates exactly one symbol's order book; consumes its dedicated request queue; emits `ClientResponse` and `MarketUpdate` events |
-| Market Data Publisher | 1 | Consumes `MarketUpdate` events from all symbols, broadcasts deltas |
-| Snapshot Synthesizer | 1 | Mirrors the delta stream to maintain a full in-memory book copy; periodically emits complete snapshots for recovery/late joiners |
+Before matching an incoming order against a resting one, the engine checks whether they
+belong to the same client. If so, that resting order is skipped and matching continues
+against the next one in line, instead of trading against yourself.
 
-**Communication:** All cross-thread communication uses `Common/lf_queue.h`, a templated
-lock-free SPSC ring buffer. Because each matching thread has its own dedicated inbound
-queue (fed only by the single Order Gateway thread) and its own dedicated outbound queues,
-every queue is genuinely single-producer/single-consumer — no CAS loops or locks needed
-beyond simple atomic read/write indices.
+## Threading
 
-**Determinism:** Determinism is preserved because (a) the Order Gateway assigns a single
-global, monotonic sequence/timestamp to every incoming request regardless of which
-producer thread it came from, and (b) each symbol's book is mutated by exactly one thread,
-so replaying the same sequenced stream always produces the same book state and trade
-sequence.
+- Any number of producer threads can call `submit()` on the gateway at once.
+- The gateway runs one background thread that periodically drains whatever's come in,
+  sorts it by receive time, and routes each request to the queue belonging to that
+  request's symbol.
+- **Each symbol gets its own dedicated matching thread.** `MatchingCore` starts one
+  thread per symbol on `start()`, and that thread is the only thing that ever reads
+  from that symbol's request queue or writes to that symbol's response/update queues.
+  One symbol being busy (or slow) never blocks matching for any other symbol.
+- The market data feed runs its own thread, draining every symbol's update queue,
+  fanning updates out to subscribers and to the snapshot mirror.
+- Threads get pinned to a CPU core on start (`Common/threads.h`) to cut down on
+  context-switch noise.
 
-**CPU affinity:** `Common/thread_utils.h` pins each thread to a dedicated core to avoid
-context-switch jitter and to keep cache lines warm for that thread's hot data.
+Determinism comes from two things: the gateway assigns every request a single receive
+timestamp before it's routed anywhere, regardless of which thread submitted it or which
+symbol it's for; and each symbol's book is only ever touched by that symbol's own
+thread. So replaying the same input always produces the same sequence of trades for
+every symbol.
 
----
+## A couple of trade-offs, worth being upfront about
 
-## Time & Space Complexity
+- **The gateway's inbox uses a small mutex, not a lock-free MPSC queue.** Submitting
+  orders isn't on the matching hot path, so a short-lived lock there is a fine trade for
+  not having to hand-roll a general multi-producer lock-free queue.
+- **`std::map` for price levels instead of a flat array.** Simpler and correct, at the
+  cost of O(log P) instead of O(1) for level lookups. For instruments with a small,
+  bounded tick range, an array indexed by price offset would be faster - left as a next
+  step rather than something needed for correctness here.
+- **No real network layer.** Orders go in and responses come out through an in-process
+  API (what the tests and benchmark use directly) rather than over a socket. The focus
+  here was the matching logic itself; wiring a TCP/FIX layer on top of the existing
+  request/response queues later wouldn't need touching the matching code at all.
+- **A request for an unknown symbol has nowhere to be routed to**, so it's rejected
+  immediately on a small dedicated queue rather than a per-symbol one (there's no
+  per-symbol queue to put it on). This keeps the "one queue, one writer" rule intact
+  everywhere else.
 
-| Operation | Time Complexity | Notes |
-|---|---|---|
-| Insert new limit order (no match) | O(log P) | P = distinct price levels on that side |
-| Match against best price level | O(log P) amortized per level crossed, O(1) per order matched at a level | |
-| Cancel order | O(1) average | via order-id → node hash map + intrusive list unlink |
-| Modify (qty decrease) | O(1) | in-place, priority retained |
-| Modify (qty increase / price change) | O(log P) | re-insertion, priority reset |
-| Market/IOC order | O(k log P) | k = number of price levels consumed to fill |
-| Full book snapshot | O(N) | N = total resting orders in that symbol's book |
+## Building
 
-**Space:** O(N) per symbol for resting orders, O(P) for price level nodes, plus fixed
-pool capacity reserved at startup (bounded, no dynamic growth on the hot path under
-normal operating limits).
-
----
-
-## Error Handling
-
-The engine validates and gracefully rejects (with a reason code in `ClientResponse`)
-rather than throwing/crashing on:
-
-- Duplicate Order IDs
-- Invalid prices (≤ 0, non-tick-aligned if applicable)
-- Invalid quantities (≤ 0)
-- Unknown/unsupported symbols
-- Invalid/unsupported order types
-- Cancel on an unknown or already-completed order (ignored gracefully, not an error)
-- Modify on an unknown order
-
----
-
-## Design Decisions & Trade-offs
-
-- **`std::map` for price levels vs. a flat vector/array-indexed book:** `std::map` was
-  chosen for simplicity and correctness first; for tick-size-bounded instruments, a
-  contiguous array indexed by normalized price offset would give O(1) best-price access
-  and is called out here as a future optimization (see below).
-- **Lock-free SPSC over MPMC queues:** Because each matching thread has exactly one
-  producer (the sequencer) and each downstream consumer has exactly one producer, SPSC
-  queues are sufficient and are significantly cheaper than general MPMC lock-free queues.
-- **Intrusive linked lists over `std::list`:** avoids per-node heap allocation and extra
-  indirection; nodes are pool-allocated and manually linked.
-- **Networking layer (`tcp_*`, `mcast_*`) kept minimal/optional:** the assignment's core
-  evaluation is the matching engine itself; a full FIX/binary protocol gateway was
-  deprioritized in favor of a clean in-process `ClientRequest`/`ClientResponse` API that
-  the test harness and benchmark driver call directly. This is documented as a conscious
-  scope trade-off, not an oversight — the queue-based interfaces make it straightforward
-  to bolt a real transport on later.
-- **Self-trade prevention policy:** implemented as skip-and-continue rather than
-  reject-whole-order, since this is closer to common venue behavior and preserves more
-  fillable liquidity; this is configurable behavior worth revisiting per exchange rules.
-
----
-
-## Build Instructions
+Needs a C++20 compiler (GCC 11+ or Clang 14+) and CMake 3.20+.
 
 ```bash
 mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . -j
+cmake ..
+make -j
 ```
 
-Requires a C++20-capable compiler (GCC 11+/Clang 14+) and CMake 3.20+.
+This builds three binaries: `exchange_main`, `test_order_book`, and `benchmark_main`.
 
----
-
-## Running Tests
+## Running the tests
 
 ```bash
 cd build
+./test_order_book
+```
+
+or, via ctest:
+
+```bash
 ctest --output-on-failure
 ```
 
----
-
-## Running Benchmarks
+## Running the sample
 
 ```bash
 cd build
-./benchmarks/benchmark_main --orders 1000000 --symbols 50
+./exchange_main ../sample_io/sample_orders.txt output.txt
 ```
 
-Reports: orders processed per second, mean latency, P50, P75, P90, P99, and maximum
-latency (nanoseconds).
+Reads the CSV of orders in `sample_io/sample_orders.txt`, runs them through the engine,
+and writes out the responses and book updates. `sample_io/sample_output.txt` shows what
+that looks like. (Since different symbols now run on different threads, the exact
+interleaving of two symbols' output lines can vary slightly run to run - the matching
+result for each individual symbol is still deterministic.)
 
----
+## Running the benchmark
 
-## Sample Input / Output
+```bash
+cd build
+./benchmark_main            # defaults to 200,000 orders
+./benchmark_main 1000000    # or pass a count
+```
 
-See `sample_io/sample_orders.txt` for a sample input order stream and
-`sample_io/sample_output.txt` for the corresponding fills, rejects, and resulting book
-snapshot.
+Prints throughput (orders/sec) and latency percentiles (mean, p50, p75, p90, p99, max),
+measured from when an order is submitted to when its first response comes back.
 
----
-
-## Future Improvements
-
-- Replace `std::map` price levels with a tick-indexed flat array for O(1) best-price access.
-- Add a real FIX/binary protocol adapter over the existing `order_server` request API.
-- Add configurable self-trade prevention policies (reject-taker, reject-maker, cancel-both).
-- Persist execution log to disk with periodic checkpointing tied to snapshots.

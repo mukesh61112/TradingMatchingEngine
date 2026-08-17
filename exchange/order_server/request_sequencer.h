@@ -2,6 +2,7 @@
 
 #include <array>
 #include <algorithm>
+#include <functional>
 
 #include "Common/macros.h"
 #include "Common/logging.h"
@@ -12,26 +13,40 @@ namespace Exchange {
   constexpr size_t MAX_PENDING_GATEWAY_REQUESTS = 8192;
 
   /// Buffers requests as they arrive (potentially out of order, from multiple producer
-  /// threads) and publishes them to the matching engine's queue in strict receive-time
-  /// order. This is what lets a single-threaded-per-symbol matching engine stay
-  /// deterministic even though many producers are submitting concurrently.
+  /// threads) and publishes them in strict receive-time order via a router callback,
+  /// which decides where each sequenced request actually goes (e.g. MatchingCore
+  /// splitting the stream out to the right per-symbol queue). This is what lets a
+  /// matching engine with one thread per symbol stay deterministic even though many
+  /// producers are submitting concurrently.
   class RequestSequencer final {
   public:
-    RequestSequencer(OrderRequestQueue *out_queue, Common::Logger *logger)
-        : out_queue_(out_queue), logger_(logger) {
+    /// Called once per request, in receive-time order, by flush().
+    using Router = std::function<void(const EngineOrderRequest &)>;
+
+    RequestSequencer(Router router, Common::Logger *logger)
+        : router_(std::move(router)), logger_(logger) {
     }
 
-    /// Buffer one request tagged with its receive time. Not visible to the matching
-    /// engine until flush() is called.
+    /// Buffer one request tagged with its receive time. Not visible to the router until
+    /// flush() is called. If the scratch buffer is already full, flush what's pending
+    /// first rather than overflowing - a large backlog is a valid (if undesirable)
+    /// runtime condition, not something that should crash the process.
     auto enqueue(Common::Nanos rx_time, const EngineOrderRequest &request) noexcept -> void {
-      ASSERT(pending_size_ < pending_.size(), "RequestSequencer overflow - too many pending requests.");
+      if (UNLIKELY(pending_size_ >= pending_.size())) {
+        flush();
+      }
       auto tagged = request;
       tagged.recv_time_ = rx_time;
       pending_[pending_size_++] = tagged;
     }
 
-    /// Sort everything buffered since the last flush by receive time, then push each
-    /// request onto the matching engine's lock free queue in that order.
+    /// True once the scratch buffer can't accept another enqueue() without flushing.
+    auto isFull() const noexcept -> bool {
+      return pending_size_ >= pending_.size();
+    }
+
+    /// Sort everything buffered since the last flush by receive time, then hand each
+    /// request to the router in that order.
     auto flush() noexcept -> void {
       if (UNLIKELY(pending_size_ == 0)) {
         return;
@@ -44,8 +59,7 @@ namespace Exchange {
 
       for (size_t i = 0; i < pending_size_; ++i) {
         LOG_INFO(*logger_, "sequencing %s", pending_[i].toString().c_str());
-        *(out_queue_->getNextToWriteTo()) = pending_[i];
-        out_queue_->updateWriteIndex();
+        router_(pending_[i]);
       }
       pending_size_ = 0;
     }
@@ -58,8 +72,7 @@ namespace Exchange {
     RequestSequencer &operator=(const RequestSequencer &&) = delete;
 
   private:
-    /// Destination queue read by the matching engine.
-    OrderRequestQueue *out_queue_ = nullptr;
+    Router router_;
     Common::Logger *logger_ = nullptr;
 
     /// Unsorted scratch buffer of requests accumulated since the last flush().

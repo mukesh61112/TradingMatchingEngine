@@ -28,12 +28,12 @@ int main(int argc, char **argv) {
 
   const std::vector<Symbol> symbols = {"AAPL", "MSFT", "GOOG", "AMZN", "TSLA"};
 
-  OrderRequestQueue request_queue(1 << 20);
-  OrderResponseQueue response_queue(1 << 20);
-  MarketUpdateQueue update_queue(1 << 20);
-
-  MatchingCore matcher(symbols, &request_queue, &response_queue, &update_queue);
-  OrderGatewayServer gateway(&request_queue, &response_queue);
+  // MatchingCore owns one request/response/update queue per symbol internally and
+  // runs one matching thread per symbol - it must be constructed first so the gateway
+  // can be wired to its per-symbol queues.
+  MatchingCore matcher(symbols);
+  OrderGatewayServer gateway([&matcher](const EngineOrderRequest &req) { matcher.routeRequest(req); },
+                              matcher.responseQueues());
 
   matcher.start();
   gateway.start();

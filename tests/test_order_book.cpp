@@ -29,16 +29,13 @@ namespace {
     }
   }
 
-  // Wraps a MatchingCore + its queues so each test can just call send() and settle().
+  // Wraps a MatchingCore (which now runs one matching thread per symbol, each with its
+  // own queues) so each test can just call send() and settle() without caring about that.
   struct Harness {
-    OrderRequestQueue req_q{4096};
-    OrderResponseQueue resp_q{4096};
-    MarketUpdateQueue upd_q{4096};
     MatchingCore engine;
     std::vector<EngineOrderResponse> responses;
 
-    explicit Harness(std::vector<Symbol> symbols)
-        : engine(std::move(symbols), &req_q, &resp_q, &upd_q) {
+    explicit Harness(std::vector<Symbol> symbols) : engine(std::move(symbols)) {
       engine.start();
     }
 
@@ -47,17 +44,21 @@ namespace {
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
+    // Routes straight to the right symbol's queue, same as the gateway would after
+    // sequencing - fine here since the test thread submits everything in order anyway.
     void send(EngineOrderRequest r) {
-      *(req_q.getNextToWriteTo()) = r;
-      req_q.updateWriteIndex();
+      engine.routeRequest(r);
     }
 
     // gives the engine a moment to process, then pulls whatever responses arrived
+    // across every symbol's response queue
     void settle(int wait_ms = 100) {
       std::this_thread::sleep_for(std::chrono::milliseconds(wait_ms));
-      for (auto r = resp_q.getNextToRead(); resp_q.size() && r; r = resp_q.getNextToRead()) {
-        responses.push_back(*r);
-        resp_q.updateReadIndex();
+      for (auto *queue : engine.responseQueues()) {
+        for (auto r = queue->getNextToRead(); queue->size() && r; r = queue->getNextToRead()) {
+          responses.push_back(*r);
+          queue->updateReadIndex();
+        }
       }
     }
 

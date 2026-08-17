@@ -1,0 +1,6 @@
+2026-08-16 17:41:51 [INFO] [/workspaces/TradingMatchingEngine/tests/../exchange/matcher/matching_core.h:128 run] matching thread starting
+2026-08-16 17:41:52 [INFO] [/workspaces/TradingMatchingEngine/tests/../exchange/matcher/matching_core.h:128 run] matching thread starting
+2026-08-16 17:41:53 [INFO] [/workspaces/TradingMatchingEngine/exchange/matcher/order_book.cpp:19 sendResponse] response EngineOrderResponse [status:ACCEPTED client:2 symbol:BBB coid:2 moid:2 side:SELL exec:0 leaves:5 price:100]
+2026-08-16 17:41:53 [INFO] [/workspaces/TradingMatchingEngine/exchange/matcher/order_book.cpp:27 sendBookUpdate] book_update BookUpdate [type:ADD oid:2 symbol:BBB side:SELL qty:5 price:100]
+2026-08-16 17:41:53 [INFO] [/workspaces/TradingMatchingEngine/exchange/matcher/order_book.cpp:19 sendResponse] response EngineOrderResponse [status:ACCEPTED client:1 symbol:AAA coid:1 moid:1 side:BUY exec:0 leaves:5 price:100]
+2026-08-16 17:41:53 [INFO] [/workspaces/TradingMatchingEngine/exchange/matcher/order_book.cpp:27 sendBookUpdate] book_update BookUpdate [type:ADD oid:1 symbol:AAA side:BUY qty:5 price:100]

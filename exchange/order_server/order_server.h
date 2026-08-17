@@ -4,6 +4,7 @@
 #include <vector>
 #include <thread>
 #include <atomic>
+#include <functional>
 
 #include "Common/macros.h"
 #include "Common/threads.h"
@@ -18,7 +19,9 @@ namespace Exchange {
   /// Sits between (potentially many) order-producing threads and the matching engine.
   /// Accepts requests via submit(), which any producer thread can call concurrently,
   /// buffers them, and periodically hands the whole batch to a RequestSequencer which
-  /// orders them by receive time before publishing to the matching engine's queue.
+  /// orders them by receive time and routes each one onward (e.g. into the matching
+  /// engine's per-symbol queues) before draining every response queue the matching
+  /// engine hands back.
   ///
   /// NOTE: unlike the fully lock-free stages elsewhere in this engine, ingestion here
   /// uses a small mutex-protected inbox. Producer submission is not on the matching hot
@@ -26,13 +29,19 @@ namespace Exchange {
   /// building a general MPSC lock-free queue for a single, low-frequency entry point.
   class OrderGatewayServer final {
   public:
-    OrderGatewayServer(OrderRequestQueue *outgoing_requests, OrderResponseQueue *incoming_responses)
-        : sequencer_(outgoing_requests, &logger_), incoming_responses_(incoming_responses),
+    OrderGatewayServer(RequestSequencer::Router router, std::vector<OrderResponseQueue *> incoming_responses)
+        : sequencer_(std::move(router), &logger_), incoming_responses_(std::move(incoming_responses)),
           logger_("exchange_order_gateway.log") {
     }
 
     ~OrderGatewayServer() {
       stop();
+    }
+
+    /// Register a callback to receive every response coming back from the matching
+    /// engine, in the order drainResponses() reads them.
+    auto onResponse(std::function<void(const EngineOrderResponse &)> callback) -> void {
+      response_callback_ = std::move(callback);
     }
 
     /// Called by any producer thread to submit a new request. Thread-safe.
@@ -42,7 +51,7 @@ namespace Exchange {
       inbox_.push_back({rx_time, request});
     }
 
-    /// Start the background thread that periodically sequences and publishes requests,
+    /// Start the background thread that periodically sequences and routes requests,
     /// and drains matching-engine responses back out.
     auto start() -> void {
       running_ = true;
@@ -82,7 +91,7 @@ namespace Exchange {
     };
 
     /// Move everything producer threads have submitted since the last drain into the
-    /// sequencer under a short-lived lock, then release it before sorting/publishing.
+    /// sequencer under a short-lived lock, then release it before sorting/routing.
     auto drainInbox() noexcept -> void {
       std::vector<TimedRequest> batch;
       {
@@ -97,17 +106,24 @@ namespace Exchange {
       }
     }
 
-    /// Forward matching-engine responses onward (e.g. to per-client callbacks / sockets).
-    /// Left as a hook here since this assignment's scope stops at the in-process API.
+    /// Drains every response queue the matching engine gave us (one per symbol, plus
+    /// one for unroutable requests), forwarding each response via the registered
+    /// callback, if any.
     auto drainResponses() noexcept -> void {
-      for (auto resp = incoming_responses_->getNextToRead(); incoming_responses_->size() && resp; resp = incoming_responses_->getNextToRead()) {
-        LOG_INFO(logger_, "response %s", resp->toString().c_str());
-        incoming_responses_->updateReadIndex();
+      for (auto *queue : incoming_responses_) {
+        for (auto resp = queue->getNextToRead(); queue->size() && resp; resp = queue->getNextToRead()) {
+          LOG_INFO(logger_, "response %s", resp->toString().c_str());
+          if (response_callback_) {
+            response_callback_(*resp);
+          }
+          queue->updateReadIndex();
+        }
       }
     }
 
     RequestSequencer sequencer_;
-    OrderResponseQueue *incoming_responses_ = nullptr;
+    std::vector<OrderResponseQueue *> incoming_responses_;
+    std::function<void(const EngineOrderResponse &)> response_callback_;
 
     Common::Logger logger_;
 

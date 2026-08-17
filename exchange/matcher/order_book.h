@@ -13,8 +13,6 @@
 #include "book_order.h"
 
 namespace Exchange {
-  class MatchingCore; // forward declared - the order book publishes responses/updates through it.
-
   /// Maximum number of simultaneously resting orders / distinct price levels this book
   /// will pool memory for. Sized generously; exceeding it is treated as a fatal
   /// configuration error rather than something recoverable at runtime.
@@ -22,11 +20,13 @@ namespace Exchange {
   constexpr size_t MAX_PRICE_LEVELS   = 8 * 1024;
 
   /// One symbol's independent limit order book: separate bid/ask sides, each kept in
-  /// price-time priority. Owns no threads itself - it is driven synchronously by
-  /// whichever MatchingCore thread has been assigned this symbol.
+  /// price-time priority. Owns no thread itself - it is driven synchronously by the one
+  /// matching thread MatchingCore dedicates to this symbol, and writes its responses and
+  /// book updates directly onto that same symbol's own output queues.
   class SymbolOrderBook final {
   public:
-    SymbolOrderBook(Common::Symbol symbol, Common::Logger *logger, MatchingCore *engine);
+    SymbolOrderBook(Common::Symbol symbol, Common::Logger *logger,
+                     OrderResponseQueue *response_queue, MarketUpdateQueue *update_queue);
 
     ~SymbolOrderBook();
 
@@ -64,7 +64,8 @@ namespace Exchange {
 
   private:
     Common::Symbol symbol_;
-    MatchingCore *engine_ = nullptr;
+    OrderResponseQueue *response_queue_ = nullptr;
+    MarketUpdateQueue *update_queue_ = nullptr;
     Common::Logger *logger_ = nullptr;
 
     /// Bids ordered highest-price-first, asks ordered lowest-price-first - so
@@ -101,4 +102,4 @@ namespace Exchange {
 
   /// Convenience: maps every tradeable symbol to its own independent order book.
   using OrderBookMap = std::unordered_map<Common::Symbol, std::unique_ptr<SymbolOrderBook>>;
-}t
+}

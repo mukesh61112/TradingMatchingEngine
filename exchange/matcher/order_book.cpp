@@ -3,8 +3,9 @@
 
 namespace Exchange {
 
-  SymbolOrderBook::SymbolOrderBook(Common::Symbol symbol, Common::Logger *logger, MatchingCore *engine)
-      : symbol_(std::move(symbol)), engine_(engine), logger_(logger),
+  SymbolOrderBook::SymbolOrderBook(Common::Symbol symbol, Common::Logger *logger,
+                                    OrderResponseQueue *response_queue, MarketUpdateQueue *update_queue)
+      : symbol_(std::move(symbol)), response_queue_(response_queue), update_queue_(update_queue), logger_(logger),
         order_pool_(MAX_RESTING_ORDERS), level_pool_(MAX_PRICE_LEVELS) {
   }
 
@@ -16,14 +17,16 @@ namespace Exchange {
 
   auto SymbolOrderBook::sendResponse(const EngineOrderResponse &resp) noexcept -> void {
     LOG_INFO(*logger_, "response %s", resp.toString().c_str());
-    engine_->publishResponse(resp);
+    *(response_queue_->getNextToWriteTo()) = resp;
+    response_queue_->updateWriteIndex();
   }
 
   auto SymbolOrderBook::sendBookUpdate(MarketUpdateType type, Common::OrderId order_id, Common::Side side,
                                         Common::Price price, Common::Qty qty) noexcept -> void {
     BookUpdate update{type, order_id, symbol_, side, price, qty};
     LOG_INFO(*logger_, "book_update %s", update.toString().c_str());
-    engine_->publishBookUpdate(update);
+    *(update_queue_->getNextToWriteTo()) = update;
+    update_queue_->updateWriteIndex();
   }
 
   // ------------------------------------------------------------------------

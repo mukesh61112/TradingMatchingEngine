@@ -27,7 +27,7 @@
 #include <chrono>
 #include <thread>
 
-#include "exchange/order_gateway/order_gateway_server.h"
+#include "exchange/order_server/order_server.h"
 #include "exchange/matcher/matching_core.h"
 #include "exchange/market_data/market_data_feed.h"
 
@@ -114,13 +114,13 @@ int main(int argc, char **argv) {
     }
   }
 
-  OrderRequestQueue request_queue(1 << 16);
-  OrderResponseQueue response_queue(1 << 16);
-  MarketUpdateQueue update_queue(1 << 16);
-
-  OrderGatewayServer gateway(&request_queue, &response_queue);
-  MatchingCore matcher(symbols, &request_queue, &response_queue, &update_queue);
-  MarketDataFeed feed(&update_queue);
+  // MatchingCore owns one request/response/update queue per symbol internally and
+  // runs one matching thread per symbol - it must be constructed first so the gateway
+  // and feed can be wired to its per-symbol queues.
+  MatchingCore matcher(symbols);
+  OrderGatewayServer gateway([&matcher](const EngineOrderRequest &req) { matcher.routeRequest(req); },
+                              matcher.responseQueues());
+  MarketDataFeed feed(matcher.updateQueues());
 
   std::vector<std::string> response_lines;
   gateway.onResponse([&](const EngineOrderResponse &r) {

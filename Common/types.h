@@ -10,7 +10,7 @@ using ClientId = uint64_t;
 using Price    = int64_t;    // fixed-point price (e.g. price * tick_scale)
 using Qty      = uint64_t;
 using Symbol   = std::string;
-using Nanos    = uint64_t;   // timestamp in nanoseconds
+//using Nanos    = uint64_t;   // timestamp in nanoseconds
 
 constexpr OrderId  Invalid_OrderId  = std::numeric_limits<OrderId>::max();
 constexpr ClientId Invalid_ClientId = std::numeric_limits<ClientId>::max();

@@ -26,8 +26,8 @@ namespace Exchange {
   public:
     using Subscriber = std::function<void(const BookUpdate &)>;
 
-    explicit MarketDataFeed(MarketUpdateQueue *engine_updates)
-        : engine_updates_(engine_updates), snapshot_feed_(SNAPSHOT_QUEUE_SIZE),
+    explicit MarketDataFeed(std::vector<MarketUpdateQueue *> engine_updates)
+        : engine_updates_(std::move(engine_updates)), snapshot_feed_(SNAPSHOT_QUEUE_SIZE),
           snapshot_service_(&snapshot_feed_), logger_("exchange_market_data_feed.log") {
     }
 
@@ -52,20 +52,22 @@ namespace Exchange {
       snapshot_service_.stop();
     }
 
-    /// Main loop: drain updates from the matching engine, broadcast to subscribers, and
-    /// forward a copy onward to the snapshot mirror.
+    /// Main loop: drain updates from every symbol's queue, broadcast each to
+    /// subscribers, and forward a copy onward to the snapshot mirror.
     auto run() noexcept -> void {
       LOG_INFO(logger_, "MarketDataFeed run loop starting");
       while (running_) {
-        for (auto update = engine_updates_->getNextToRead(); engine_updates_->size() && update; update = engine_updates_->getNextToRead()) {
-          for (auto &subscriber : subscribers_) {
-            subscriber(*update);
+        for (auto *queue : engine_updates_) {
+          for (auto update = queue->getNextToRead(); queue->size() && update; update = queue->getNextToRead()) {
+            for (auto &subscriber : subscribers_) {
+              subscriber(*update);
+            }
+
+            *(snapshot_feed_.getNextToWriteTo()) = *update;
+            snapshot_feed_.updateWriteIndex();
+
+            queue->updateReadIndex();
           }
-
-          *(snapshot_feed_.getNextToWriteTo()) = *update;
-          snapshot_feed_.updateWriteIndex();
-
-          engine_updates_->updateReadIndex();
         }
       }
     }
@@ -85,7 +87,7 @@ namespace Exchange {
   private:
     static constexpr size_t SNAPSHOT_QUEUE_SIZE = 1 << 16;
 
-    MarketUpdateQueue *engine_updates_ = nullptr;
+    std::vector<MarketUpdateQueue *> engine_updates_;
     std::vector<Subscriber> subscribers_;
 
     /// Separate queue feeding the snapshot mirror, decoupled from whatever subscribers do.
