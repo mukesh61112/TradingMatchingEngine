@@ -30,8 +30,7 @@ at once.
 its own inbound request queue, and its own outbound response/update queues. The gateway
 splits its time-sorted stream out by symbol (`MatchingCore::routeRequest`), so each
 symbol's thread only ever sees requests for that symbol, in the order they were
-received. No two symbols ever touch each other's book or share a thread.
-
+received. 
 **Market Data Feed** listens to every symbol's book-update queue (a new order resting, a
 trade, a cancel, etc.) and pushes that out to anyone subscribed. It also keeps a
 mirrored copy of the book on the side so it can hand out full snapshots without
