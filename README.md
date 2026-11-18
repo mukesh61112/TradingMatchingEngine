@@ -1,4 +1,4 @@
-# Trading Matching Engine
+Trading Matching Engine
 
 A multi-symbol order matching engine written in C++20. It works like a simplified stock
 exchange - clients send orders, the engine matches buyers with sellers using price-time
@@ -8,7 +8,7 @@ This was built as a technical assignment, so the goal was to keep the core match
 correct and fast, while keeping the rest of the system (networking, persistence, etc.)
 simple and out of scope.
 
-## How it works
+How it works
 
 There are three main pieces, and they talk to each other only through queues - no shared
 state, no locks on the hot path.
